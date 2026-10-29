@@ -1,0 +1,28 @@
+{
+  "volume": 6,
+  "issue_date": "2026年12月",
+  "intro": "寮生会新聞の導入文を入力してください。",
+  "article1": {
+    "category": "DORM LIFE / 01",
+    "title": "記事1のタイトルを入力してください",
+    "body": "記事1の本文を入力してください",
+    "image": "",
+    "image_caption": "七夕企画の様子（差し替え用サンプル）",
+    "date_label": "写真を設定"
+  },
+  "article2": {
+    "category": "STUDY SUPPORT / 02",
+    "title": "記事2のタイトルを入力してください",
+    "body": "記事2の本文を入力してください",
+    "image": "",
+    "date_label": "写真を設定",
+    "image_caption": ""
+  },
+  "notices": [
+    "お知らせ①（入力してください）",
+    "お知らせ②（入力してください）",
+    "お知らせ③（入力してください）"
+  ],
+  "teacher1": "（寮務主事のコメントを入力）",
+  "teacher2": "（寮監のコメントを入力）"
+}
