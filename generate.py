@@ -56,28 +56,46 @@ def validate_edition(edition_file: Path, volume: int) -> tuple[dict, list[dict]]
         raise InputProblem("お知らせは最大3件です。edition.jsonのnoticesを確認してください。")
     articles = []
     for i in (1, 2):
+        if not isinstance(edition[f"article{i}"], dict):
+            raise InputProblem(f"article{i}はJSONオブジェクト（{{...}}）で設定してください。")
         item = edition[f"article{i}"].copy()
         for required in ("category", "title", "body"):
             if not str(item.get(required, "")).strip():
                 raise InputProblem(f"記事{i}の {required} が未入力です")
-        img = str(item.get("image", "")).strip()
-        item["img_src"] = None
-        if img:
+        # 新方式: images は0〜2個の画像パス配列。旧方式 image（文字列）も受け付ける。
+        old_image = item.get("image", "")
+        if not isinstance(old_image, str):
+            raise InputProblem(f"記事{i}のimageには文字列を指定してください。")
+        if "images" in item:
+            image_paths = item["images"]
+            if not isinstance(image_paths, list) or len(image_paths) > 2:
+                raise InputProblem(f"記事{i}のimagesは0〜2個の画像パスを並べた配列にしてください。")
+            if any(not isinstance(p, str) or not p.strip() for p in image_paths):
+                raise InputProblem(f"記事{i}のimagesには空欄ではない画像パスを指定してください。")
+            if old_image.strip():
+                raise InputProblem(f"記事{i}でimageとimagesを同時に設定しないでください。imagesだけを使用してください。")
+        else:
+            image_paths = [old_image.strip()] if old_image.strip() else []
+
+        item["image_sources"] = []
+        for img in image_paths:
             filepath = (edition_file.parent / img).resolve()
             # 相対ディレクトリ外の写真参照は許可しない
             try:
                 filepath.relative_to(edition_file.parent.resolve())
             except ValueError:
-                raise InputProblem(f"画像はこのプロジェクト内に配置してください: {img}")
+                raise InputProblem(f"記事{i}の画像はedition.jsonと同じフォルダ以下に配置してください: {img}")
             if not filepath.is_file():
                 raise InputProblem(f"記事{i}の画像が見つかりません: {filepath}")
             mime = mimetypes.guess_type(filepath.name)[0]
             if mime not in {"image/jpeg", "image/png", "image/webp"}:
-                raise InputProblem("画像形式は.jpg、.png、.webpを使用してください。")
+                raise InputProblem(f"記事{i}の画像形式は.jpg、.png、.webpを使用してください: {img}")
             if filepath.stat().st_size > 8_000_000:
-                raise InputProblem(f"画像サイズが大きすぎます（8MB上限）: {img}")
-            item["img_src"] = f"data:{mime};base64,{base64.b64encode(filepath.read_bytes()).decode('ascii')}"
-        else:
+                raise InputProblem(f"記事{i}の画像サイズが大きすぎます（1枚8MB上限）: {img}")
+            item["image_sources"].append(
+                f"data:{mime};base64,{base64.b64encode(filepath.read_bytes()).decode('ascii')}"
+            )
+        if not image_paths:
             item["date_label"] = item.get("date_label", "PHOTO")
         articles.append(item)
     return edition, articles

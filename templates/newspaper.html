@@ -21,6 +21,9 @@ body { color: #242b2e; font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-ser
 .article h2 { flex:0 0 37px; margin:0; font:bold 19px/1.38 "Noto Serif CJK JP","Noto Serif JP",serif; }
 .article .photo { flex:0 0 115px; min-width:0; display:flex; justify-content:center; align-items: center; position:relative; overflow:hidden; background:#e4e8e4; }
 .article img { width:100%; height:100%; object-fit:cover; display:block; }
+/* 1枚:全面表示 / 2枚:左右均等（縦横比は保ち、枠からはみ出す部分だけトリミング） */
+.article .photo.photo--two { gap:5px; }
+.article .photo.photo--two img { width:0; min-width:0; flex:1 1 0; height:100%; object-fit:cover; }
 .article .date-card {width:100%;height:100%;position:relative;background:#e5eae6;border-left:7px solid #98784e;}
 .article .date-number {font:bold 31px/1 Arial,sans-serif;position:absolute;left:16px;top:13px;}
 .article .date-desc {position:absolute;left:16px;bottom:12px;font-size:12px;font-weight:700;}
@@ -127,8 +130,8 @@ body { color: #242b2e; font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-ser
    {% for a in articles %}<article class="article" data-article="{{ loop.index }}">
      <div class="category">{{ a.category }}</div>
      <h2>{{ a.title }}</h2>
-     <div class="photo">
-       {% if a.img_src %}<img src="{{ a.img_src }}" alt="記事写真{{ loop.index }}">{% else %}<div class="date-card"><div class="date-number">{{ a.date_label }}</div><div class="date-desc">{{ a.title }}</div></div>{% endif %}
+     <div class="photo{% if a.image_sources|length == 2 %} photo--two{% endif %}" data-image-count="{{ a.image_sources|length }}">
+       {% if a.image_sources %}{% for photo in a.image_sources %}<img src="{{ photo }}" alt="記事写真{{ loop.index }}">{% endfor %}{% else %}<div class="date-card"><div class="date-number">{{ a.date_label }}</div><div class="date-desc">{{ a.title }}</div></div>{% endif %}
      </div>
      <p>{{ a.body }}</p>
    </article>{% endfor %}

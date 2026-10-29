@@ -60,7 +60,8 @@ def main():
     for i in (1, 2):
         edition[f'article{i}']['title'] = f'記事{i}のタイトルを入力してください'
         edition[f'article{i}']['body'] = f'記事{i}の本文を入力してください'
-        edition[f'article{i}']['image'] = ''
+        edition[f'article{i}'].pop('image', None)  # 新方式のimages配列に統一
+        edition[f'article{i}']['images'] = []
         edition[f'article{i}']['date_label'] = '写真を設定'
     edition['teacher1'] = '（寮務主事のコメントを入力）'
     edition['teacher2'] = '（寮監のコメントを入力）'

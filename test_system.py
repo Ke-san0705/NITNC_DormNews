@@ -1,4 +1,5 @@
 import csv
+import base64
 import json
 import tempfile
 import unittest
@@ -122,6 +123,60 @@ class NewspaperTests(unittest.TestCase):
             target.write_text(json.dumps(edition, ensure_ascii=False), encoding='utf-8')
             with self.assertRaisesRegex(InputProblem, 'issue_month'):
                 validate_edition(target, 6)
+
+    def test_image_counts_and_legacy_single(self):
+        # Test data includes two synthetic PNG files created within the edition directory.
+        pixel=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S7sAAAAASUVORK5CYII=")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            (root/'assets').mkdir()
+            for n in (1,2):
+                (root/'assets'/f'photo{n}.png').write_bytes(pixel)
+            edition=json.loads((ROOT/'edition.json').read_text('utf-8'))
+            def read():
+                file=root/'edition.json'
+                file.write_text(json.dumps(edition,ensure_ascii=False), encoding='utf-8')
+                return validate_edition(file,5)[1]
+            self.assertEqual(len(read()[0]['image_sources']),0)
+            edition['article1']['images']=['assets/photo1.png']
+            self.assertEqual(len(read()[0]['image_sources']),1)
+            edition['article1']['images']=['assets/photo1.png','assets/photo2.png']
+            self.assertEqual(len(read()[0]['image_sources']),2)
+            edition['article1']['images']=[]
+            edition['article1']['image']='assets/photo1.png'
+            edition['article1'].pop('images')
+            self.assertEqual(len(read()[0]['image_sources']),1)
+            edition['article1']['images']=['assets/photo1.png']
+            with self.assertRaisesRegex(InputProblem, '同時に設定'):
+                read()
+            edition['article1'].pop('image')
+            edition['article1']['images']=['assets/photo1.png','assets/photo2.png','assets/photo1.png']
+            with self.assertRaisesRegex(InputProblem, '0〜2個'):
+                read()
+            edition['article1']['images']=['assets/missing.png']
+            with self.assertRaisesRegex(InputProblem, '見つかりません'):
+                read()
+
+    def test_two_photos_render_in_both_designs(self):
+        pixel=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S7sAAAAASUVORK5CYII=")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            (root/'assets').mkdir()
+            for n in (1,2):
+                (root/'assets'/f'photo{n}.png').write_bytes(pixel)
+            edition=json.loads((ROOT/'edition.json').read_text('utf-8'))
+            edition['article1']['images']=['assets/photo1.png','assets/photo2.png']
+            edition['article2']['images']=['assets/photo1.png']
+            file=root/'edition.json'
+            file.write_text(json.dumps(edition,ensure_ascii=False),encoding='utf-8')
+            out=root/'out'
+            compile_once(ROOT/'samples'/'動作確認用_架空回答.xlsx',file,out,5,['classic','blue'],False,95)
+            for design in ('classic','blue'):
+                html=next((out/design).glob('*.html')).read_text('utf-8')
+                self.assertIn('data-image-count="2"',html)
+                self.assertIn('data-image-count="1"',html)
+                self.assertEqual(html.count('alt="記事写真'),3)
+                self.assertEqual(len(list((out/design).glob('*.pdf'))),1)
 
     def test_too_long_body_blocks_pdf(self):
         with tempfile.TemporaryDirectory() as tmp:

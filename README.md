@@ -164,6 +164,8 @@ IT管理長
 庶務長
 ```
 
+`秀峰寮東`と`秀峰寮西`は別部署として扱います。旧表記の`秀峰東寮`・`秀峰西寮`は互換処理で読み替えられますが、**東西が区別できない`秀峰寮`はエラー**になります。
+
 ### 4-2. FormsのExcelを準備する
 
 Microsoft Formsの回答からExcel（`.xlsx`）を取得します。**日本語が`????`に変わることがあるため、CSVよりExcelを推奨します。**
@@ -213,7 +215,7 @@ Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル
     "category": "DORM LIFE / 01",
     "title": "七夕企画、願いを短冊に",
     "body": "7月7日、寮食堂で七夕企画を開催しました。",
-    "image": "",
+    "images": [],
     "date_label": "07 / 07",
     "image_caption": ""
   },
@@ -221,7 +223,7 @@ Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル
     "category": "STUDY SUPPORT / 02",
     "title": "試験前マテカ、16日から",
     "body": "前期末試験に向けた学習支援を実施します。",
-    "image": "",
+    "images": [],
     "date_label": "07 / 16",
     "image_caption": ""
   },
@@ -256,7 +258,8 @@ Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル
 | `category` | 記事の分類名 |
 | `title` | 記事の見出し |
 | `body` | 記事本文 |
-| `image` | 画像ファイルのパス（相対指定） |
+| `images` | 画像ファイルのパス配列（0〜2枚、推奨） |
+| `image` | 旧方式の画像ファイルパス（1枚のみ）。`images`とは併用しない |
 | `date_label` | 画像がない場合の日時カードの表示 |
 | `image_caption` | 写真説明用のデータ（**現行の紙面には未表示**） |
 
@@ -267,7 +270,7 @@ Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル
   "category": "DORM LIFE / 01",
   "title": "秋の寮内イベントを開催",
   "body": "10月に寮内イベントを開催し、参加者同士の交流を深めました。",
-  "image": "assets/イベント写真.jpg",
+  "images": ["assets/イベント写真.jpg"],
   "image_caption": "イベントの様子"
 }
 ```
@@ -275,17 +278,29 @@ Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル
 **画像の配置手順**
 
 1. `assets/`に画像（JPEG・PNG・WebP）を保存します。
-2. `image`を`"assets/画像名.jpg"`のように変更します。
+2. `images`を`["assets/画像名.jpg"]`などに変更します。
 3. `generate.py`を再実行します。
 
-画像サイズの上限は**8MB**です。画像枠に合わせてトリミングされます。
-
-画像を使わず日付カードを表示したい場合は、次のようにします。
+**1記事につき画像は0〜2枚まで**指定できます。画像2枚なら横並び、1枚なら全面、0枚なら日付カードに切り替わります。元画像の縦横比を維持したまま枠に合わせてトリミングします。対応形式はJPEG・PNG・WebP、サイズ上限は**1枚8MB**です。
 
 ```json
-"image": "",
+"images": [],
 "date_label": "10 / 29"
 ```
+
+```json
+"images": ["assets/写真1.jpg"]
+```
+
+```json
+"images": ["assets/写真1.jpg", "assets/写真2.jpg"]
+```
+
+> ※上の例はJSON内の一部を抜き出したものです。実際の`edition.json`には`//`から始まるコメントを入力しないでください（JSONではコメントを使えません）。
+>
+> **互換性**: 旧形式`"image": "assets/写真1.jpg"`も1枚指定として引き続き使えます。`images`と`image`の両方に画像を指定するとエラーになります。
+>
+> **上限**: 3枚以上を指定すると安全のため生成を中止します。
 
 画像パスは、**その号の`edition.json`があるフォルダを基準にして解決されます**。次号の`issues/Vol06/edition.json`に`"assets/写真.jpg"`と書くなら、`issues/Vol06/assets/写真.jpg`に画像を置いてください。
 
@@ -415,7 +430,7 @@ python generate.py --input "C:\Users\ユーザー名\OneDrive\寮生会\回答.x
 `watch_windows.bat`でも起動できます。停止はPowerShellで`Ctrl+C`です。
 
 - 監視するのは**回答Excelと指定した`edition.json`**の更新です。
-- **画像ファイルだけの変更は検知しません。**画像を差し替えたら`edition.json`を保存し直すか生成コマンドを実行してください。
+- **画像ファイルだけの変更は検知しません。** 画像を差し替えたら`edition.json`を保存し直すか生成コマンドを実行してください。
 - PCが起動しており、PythonプログラムとOneDrive同期が動作中の場合のみ有効です。
 - 単にダウンロードしたExcelは、新しい回答を自動取得しません。
 - Formsとの直接API接続や、PC停止中のクラウドPDF自動生成は**未実装**です。
