@@ -1,493 +1,265 @@
-# NITNC_DormNews — 寮生会新聞 自動生成システム
+# NITNC_DormNews
 
-Microsoft Formsの回答をExcel形式（.xlsx）で読み込み、**①新聞風・④現行改良版**の2つのA4新聞を自動生成するプロジェクトです。部署は16種類（秀峰寮東・秀峰寮西を含む）、同じ部署の回答は最も新しいものを採用します。記事・お知らせ・題字下のコメントは`edition.json`で編集できます。
+沼津高専寮生会新聞を作るための、**Microsoft Forms → 回答Excel → HTML / PDF / PNG** 自動組版システムです。A4縦・1ページに、3本の記事、16部署（うち三役は右欄）の報告、教員コメントを掲載します。
 
-> **データの取扱い**：GitHubにはプログラムと架空のサンプルのみを登録してください。実際のForms回答Excel、個人情報、新聞の出力結果、写真は`.gitignore`で除外しています。発行写真を追加する場合は利用許諾を確認し、公開する必要がある場合だけ個別に管理してください。初期`edition.json`では画像を使わないサンプル設定にしています。
+> **ファイル名はすべて英数字に統一しました。** 新聞の日本語本文や部署名は従来どおり利用できます。Windows上でZIPを展開しても、日本語名のファイルが文字化けしにくい構成です。
 
-> **GitHubへの初回登録方法**は [GITHUB_SETUP.md](GITHUB_SETUP.md) を参照してください。
+## 1. 最初に覚えるファイル名
 
-# 寮生会新聞 自動生成システム｜README
+| 用途 | ファイル名・場所 |
+| --- | --- |
+| 発行号・記事・写真・導入文・教員コメント | `issues/Vol06/edition.json` |
+| Vol.6のMicrosoft Forms回答Excel | `issues/Vol06/answer.xlsx` |
+| Vol.6の記事画像 | `issues/Vol06/assets/` |
+| フォーム回答の集約と校正 | `generate.py` |
+| 新号の準備 | `new_issue.py` |
+| 新聞のHTML/CSSレイアウト | `templates/newspaper.html` |
+| Windows向け簡易起動 | `start_windows.bat` |
+| 回答の提出状況 | `output/Vol6/status.html` |
 
-Microsoft Formsから取得した本部部会の回答と、編集担当者が設定した上部の記事・お知らせを組み合わせ、**①新聞風**・**④現行改良版**の2種類の新聞を自動生成するシステムです。
+**旧名称との対応：** `回答.xlsx` → `answer.xlsx`、`classic` → `typeC`、`blue` → `typeB`。旧ファイル名・旧フォルダを使っていた場合は、後述の移行方法を確認してください。
 
-このREADMEは、**「秀峰寮東」「秀峰寮西」の正式名称に対応した最新版**を対象としています。Windows 11での使用を想定しています。
+## 2. 出力する新聞の名前
 
-> **重要**：システムが直接Microsoft Formsにログインするわけではありません。Formsの回答が入ったExcel（.xlsx）を読み込んで新聞を生成します。OneDriveでExcelが自動同期されている場合は、更新監視による再生成が可能です。
-
-## 目次
-
-1. [できること・編集する場所](#1-できること編集する場所)
-2. [初回セットアップ（Windows）](#2-初回セットアップwindows)
-3. [動作確認（デモ）](#3-動作確認デモ)
-4. [Microsoft Formsの回答を反映する](#4-microsoft-formsの回答を反映する)
-5. [記事・お知らせ・コメントを編集する](#5-記事お知らせコメントを編集する)
-6. [発行号数・年月を変更する](#6-発行号数年月を変更する)
-7. [次号の新聞を作る](#7-次号の新聞を作る)
-8. [デザインを選択する](#8-デザインを選択する)
-9. [OneDriveの更新を監視する](#9-onedriveの更新を監視する)
-10. [正式発行前のチェック](#10-正式発行前のチェック)
-11. [エラー・注意事項](#11-エラー注意事項)
-12. [将来の拡張案](#12-将来の拡張案)
-
----
-
-## 1. できること・編集する場所
-
-| 編集する内容 | 操作する場所 | 自動反映先 |
-| --- | --- | --- |
-| 本部部会16部署の報告 | Microsoft Forms | 下部の各部署の固定枠 |
-| 三役の報告 | Microsoft Formsの「三役」 | 下部右側の「寮生会三役」欄 |
-| 記事①・②の見出し・本文 | `edition.json` | 上部の記事欄 |
-| 記事の画像 | `assets/`と`edition.json` | 上部の記事の画像枠 |
-| お知らせ（最大3件） | `edition.json` | 上部のお知らせ欄 |
-| タイトル下のコメント | `edition.json`の`intro` | 題字下の文章 |
-| 寮務主事・寮監のコメント | `edition.json`の`teacher1`・`teacher2` | 下部右側の教員欄 |
-| 号数・発行年月 | `edition.json` | 題字付近・左下の発行情報 |
-| ①新聞風／④現行改良版 | `--design`オプション | 出力するPDF |
-
-各部署が複数回回答した場合、**完了時刻が最新の回答一式**を採用します。①②③を別々に差分更新する仕組みではありません。最新版の③が空欄なら③は掲載しません。未提出部署には「（未提出）」と表示されます。
-
-### プロジェクト構成
+例えば**Vol.6**なら、`--design both`で以下のファイルが作成されます。
 
 ```text
-プロジェクトフォルダ/
-├─ generate.py            # 新聞生成の実行ファイル
-├─ report_engine.py       # Microsoft Forms回答の取り込み・部署判定
-├─ edition.json           # Vol.5の原稿・発行情報
-├─ new_issue.py           # 次号の原稿を準備
-├─ start_windows.bat      # Windows向け簡易起動
-├─ watch_windows.bat      # Excelの更新監視を起動
-├─ requirements.txt       # 必要なPythonパッケージ
-├─ test_system.py         # 動作確認用テスト
-├─ MicrosoftForms_部署選択肢.txt
-├─ assets/                # 記事の画像ファイル（初期状態では空）
-├─ templates/
-│  └─ newspaper.html      # ①・④のHTML/CSSデザイン
-├─ samples/               # 架空の回答による動作確認用ファイル
-├─ issues/                # 号ごとの原稿を保存
-└─ output/                # 生成結果
+NITNC_DormNews/
+├── generate.py
+├── new_issue.py
+├── edition.json
+├── requirements.txt
+├── templates/
+│   └── newspaper.html
+├── issues/
+│   └── Vol06/
+│       ├── edition.json
+│       ├── answer.xlsx                # Formsから取得したファイルを自分で配置
+│       └── assets/
+│           ├── Halloween.jpg
+│           └── Halloween2.jpg
+├── samples/
+│   ├── demo_answer.xlsx
+│   └── demo_answer.csv
+└── output/
+    └── Vol6/
+        ├── typeB/
+        │   ├── DormNewsVol6_typeB.pdf
+        │   ├── DormNewsVol6_typeB.png
+        │   └── DormNewsVol6_typeB.html
+        ├── typeC/
+        │   ├── DormNewsVol6_typeC.pdf
+        │   ├── DormNewsVol6_typeC.png
+        │   └── DormNewsVol6_typeC.html
+        ├── status.html
+        ├── status.json
+        ├── merged_data.json
+        └── error.txt                  # 失敗したときだけ
 ```
 
-**毎月の通常作業では`templates/newspaper.html`やPythonコードの編集は不要です。**
+号数が7なら `DormNewsVol7_typeB.pdf` / `DormNewsVol7_typeC.pdf` のように自動変更されます。**typeBはカラフルな現行改良版、typeCは新聞風のデザイン**です。両方とも下部の発行情報はありません。typeCの上部にあった英語の題字も表示しません。
 
-## 2. 初回セットアップ（Windows）
 
-### 2-1. 必要なもの
+### 新レイアウトの余白とデザイン
 
-- Windows 11（想定環境）
-- **Python 3.11以降**
-- Microsoft Formsから取得した回答Excel（実運用時）
-- インターネット接続（初回のライブラリ・ブラウザ導入時）
+- **typeB（現行改良版）**：タイトルは従来の青い塗りつぶし（`#1469b6`）に戻し、黄色い帯を背面に配置します。
+- **typeC（新聞風）**：英語の題字は表示せず、落ち着いた新聞調のレイアウトを維持します。
+- **共通**：記事①②は本文約4行・写真欄付き、記事③は左に文章・右に画像を配置。左下の発行者・号数表記を削除した分も本部部会へ使い、**各部署の報告欄は以前の高さ509px**に揃えています。
+- 横長記事を追加したため、**各記事の領域内は従来よりコンパクト**です。長い記事本文・見出しは自動で削らず、はみ出し検査で停止します。
 
-Pythonの確認：
+## 3. 初回セットアップ（Windows 11）
 
-```powershell
-python --version
-```
-
-### 2-2. フォルダを開く
-
-1. 自動生成システムのZIPを展開します。
-2. 展開した**`generate.py`があるフォルダ**をエクスプローラーで開きます。
-3. エクスプローラーのアドレスバーに`powershell`と入力してEnterを押します。
-
-### 2-3. 初回のインストール
-
-次のコマンドを順に実行します。
+Python 3.11以降を用意して、`generate.py`のある**プロジェクトルート**でPowerShellを開きます。最初に次のコマンドを実行してください。
 
 ```powershell
 python -m pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-通常、これらは初回セットアップ時だけで構いません。Pythonが見つからない場合はインストール状態やPATHを確認してください。
-
-## 3. 動作確認（デモ）
-
-同梱の**架空の回答**を使って、まずPDFを作成します。
+インストール確認：
 
 ```powershell
-python generate.py --demo --volume 5
+python --version
+python generate.py --demo --volume 5 --design both
 ```
 
-成功すると、主に次のファイルが作成されます。
+`--demo`では個人情報を含まない `samples/demo_answer.xlsx` を使います。`--volume 5` とルートの `edition.json` の号数を一致させてください。デモ新聞も英数字のファイル名で出力されます。
 
-```text
-output/
-└─ Vol5/
-   ├─ classic/
-   │  ├─ 寮生会新聞Vol5_①新聞風.pdf
-   │  ├─ 寮生会新聞Vol5_①新聞風.png
-   │  └─ 寮生会新聞Vol5_①新聞風.html
-   ├─ blue/
-   │  ├─ 寮生会新聞Vol5_④現行改良版.pdf
-   │  ├─ 寮生会新聞Vol5_④現行改良版.png
-   │  └─ 寮生会新聞Vol5_④現行改良版.html
-   ├─ 提出状況.html
-   ├─ 提出状況.json
-   └─ 反映データ.json
-```
+## 4. Vol.6を作る（毎号の基本操作）
 
-**デモには架空の回答・仮記事が含まれます。正式発行には使用しないでください。**
+**① 記事を編集**　`issues/Vol06/edition.json` をVS Codeで開き、`volume=6`、発行年・月、導入文、記事1〜3、先生方のコメントを編集して保存します。
 
-## 4. Microsoft Formsの回答を反映する
+**② 画像を置く**　`issues/Vol06/assets/` に写真を保存し、各記事の `images` にその相対パスを書きます。
 
-### 4-1. フォームの質問項目
+**③ FormsのExcelを置く**　その号のForms回答をExcel形式（`.xlsx`）で取得し、必ず**`issues/Vol06/answer.xlsx`** という名前で保存します。別の号のExcelを流用しないでください。
 
-| 項目 | 形式 | 必須 |
-| --- | --- | --- |
-| 部署 | 選択式 | ○ |
-| ①活動報告 | 長い回答 | ○ |
-| ②寮生に対しての連絡事項 | 長い回答 | ○ |
-| ③その他（イベント情報など） | 長い回答 | 任意 |
-
-同一人物が再回答できるよう、Microsoft Formsの「**1人につき1つの回答**」は**オフ**にします。
-
-**選択肢は以下の16部署**に合わせてください。
-
-```text
-三役
-翔峰寮
-栄峰寮
-光峰寮
-明峰寮
-清峰寮
-秀峰寮東
-秀峰寮西
-優峰寮
-風紀長
-総務長
-企画長
-学習支援部長
-会計長
-IT管理長
-庶務長
-```
-
-`秀峰寮東`と`秀峰寮西`は別部署として扱います。旧表記の`秀峰東寮`・`秀峰西寮`は互換処理で読み替えられますが、**東西が区別できない`秀峰寮`はエラー**になります。
-
-### 4-2. FormsのExcelを準備する
-
-Microsoft Formsの回答からExcel（`.xlsx`）を取得します。**日本語が`????`に変わることがあるため、CSVよりExcelを推奨します。**
-
-例として、回答ファイルをプロジェクトの直下に`回答.xlsx`という名前で保存します。
-
-```text
-プロジェクトフォルダ/
-├─ generate.py
-├─ edition.json
-└─ 回答.xlsx
-```
-
-### 4-3. Excelから新聞を生成する
+**④ 生成する**　プロジェクトルートで次を実行します。
 
 ```powershell
-python generate.py --input "回答.xlsx" --volume 5
+python generate.py --input "issues/Vol06/answer.xlsx" --edition "issues/Vol06/edition.json" --volume 6 --design both
 ```
 
-デフォルトでは①新聞風・④現行改良版の**両方**を生成します。
+**⑤ 確認する**　`output/Vol6/typeB/DormNewsVol6_typeB.pdf` と `output/Vol6/typeC/DormNewsVol6_typeC.pdf` を開き、両方の校正を行います。
 
-Windowsなら`start_windows.bat`をダブルクリックし、回答ファイル名と号数を入力する簡易操作もできます。ただし、**このバッチファイルは標準の`edition.json`を参照するため、号別の`issues/VolXX/edition.json`を使うときはコマンド方式を使ってください。**
+## 5. Vol.7以降の新号を準備する
 
-### 4-4. 回答の優先順位・掲載位置
+例：Vol.7を2026年12月に発行する場合。
 
-- 同じ部署に複数回答がある場合は、**最も新しい回答全体を採用**します。
-- ③の未記入は掲載しません。過去の③は引き継ぎません。
-- 秀峰寮西：下部の**4段目右**、秀峰寮東：**5段目左**。
-- 三役：下部**右側の専用欄**。
-- それ以外の15部署：下部の**3列×5段**で決まった順序に掲載します。
-
-## 5. 記事・お知らせ・コメントを編集する
-
-**`edition.json`をVS Codeなどで開いて編集します。** 保存形式はUTF-8にしてください。`"`や`,`を含むJSONの構文は壊さないよう注意してください。
-
-### 5-1. 設定ファイルの例
-
-以下は構造を説明するための例です。**JSONファイル全体を編集する場合は、これらのキーを含む完全なJSONにしてください。**
-
-```json
-{
-  "volume": 5,
-  "issue_year": 2026,
-  "issue_month": 10,
-  "intro": "寮生会新聞をお届けします。寮生活の出来事やお知らせをお伝えします。",
-  "article1": {
-    "category": "DORM LIFE / 01",
-    "title": "七夕企画、願いを短冊に",
-    "body": "7月7日、寮食堂で七夕企画を開催しました。",
-    "images": [],
-    "date_label": "07 / 07",
-    "image_caption": ""
-  },
-  "article2": {
-    "category": "STUDY SUPPORT / 02",
-    "title": "試験前マテカ、16日から",
-    "body": "前期末試験に向けた学習支援を実施します。",
-    "images": [],
-    "date_label": "07 / 16",
-    "image_caption": ""
-  },
-  "notices": [
-    "7/16　試験前マテカ開始",
-    "8/4まで　前期末試験を実施",
-    "各種申請の提出期限を確認してください"
-  ],
-  "teacher1": "寮務主事からのコメントを入力します。",
-  "teacher2": "寮監からのコメントを入力します。"
-}
+```powershell
+python new_issue.py --volume 7 --year 2026 --month 12
 ```
 
-> ※上記の記事本文・お知らせの日程はサンプルです。実際の発行時には確認済みの内容に置き換えてください。
+自動で `issues/Vol07/edition.json`、`issues/Vol07/assets/`、`issues/Vol07/PUT_answer_xlsx_HERE.txt` が作成されます。`edition.json` に**記事1・2・3の入力欄**が含まれます。同じコマンドを再実行しても既存の原稿と写真は上書きされません。
 
-### 5-2. タイトル下のコメントを変更する
+回答Excelを `issues/Vol07/answer.xlsx` に保存したら、次を実行します。
 
-`intro`を書き換えます。
-
-```json
-"intro": "10月に入り、秋の深まりを感じる季節となりました。今月も寮生会の活動やお知らせをお届けします。"
+```powershell
+python generate.py --input "issues/Vol07/answer.xlsx" --edition "issues/Vol07/edition.json" --volume 7 --design both
 ```
 
-これが題字「寮生会新聞」の**下の導入文**になります。①と④で共通です。
+実行場所は `Vol07` 内ではなく **`NITNC_DormNews` の直下**です。
 
-### 5-3. 記事①・記事②を変更する
+## 6. edition.jsonで編集できる内容
+
+主なキーは次のとおりです。
 
 | キー | 内容 |
 | --- | --- |
-| `article1` | 左側の記事 |
-| `article2` | 右側の記事 |
-| `category` | 記事の分類名 |
-| `title` | 記事の見出し |
-| `body` | 記事本文 |
-| `images` | 画像ファイルのパス配列（0〜2枚、推奨） |
-| `image` | 旧方式の画像ファイルパス（1枚のみ）。`images`とは併用しない |
-| `date_label` | 画像がない場合の日時カードの表示 |
-| `image_caption` | 写真説明用のデータ（**現行の紙面には未表示**） |
+| `volume` | 号数。例：`6` |
+| `issue_year` / `issue_month` | 発行年・月。例：`2026` / `11` |
+| `intro` | 題字の下の導入文 |
+| `article1` | 左のメイン記事 |
+| `article2` | 右のメイン記事 |
+| `article3` | メイン2記事の下にある**横長記事** |
+| `teacher1` | 寮務主事のコメント |
+| `teacher2` | 寮監のコメント |
 
-例：
+記事3の書き方（記事1・2も同じ`images`形式）：
 
 ```json
-"article1": {
-  "category": "DORM LIFE / 01",
-  "title": "秋の寮内イベントを開催",
-  "body": "10月に寮内イベントを開催し、参加者同士の交流を深めました。",
-  "images": ["assets/イベント写真.jpg"],
-  "image_caption": "イベントの様子"
+"article3": {
+  "category": "CAMPUS NEWS / 03",
+  "title": "次回イベントのお知らせ",
+  "body": "記事の本文をここに記入します。",
+  "date_label": "12 / 01",
+  "images": ["assets/Event.jpg"]
 }
 ```
 
-**画像の配置手順**
+記事3のレイアウトは**左上にタイトル、左下に本文、右側に画像**です。メイン記事2本の本文欄は約4行分を想定し、写真を大きく取っています。本文やタイトルが長すぎる場合は、文字が切れるのを防ぐため生成が停止することがあります。
 
-1. `assets/`に画像（JPEG・PNG・WebP）を保存します。
-2. `images`を`["assets/画像名.jpg"]`などに変更します。
-3. `generate.py`を再実行します。
+### 画像0・1・2枚の指定方法
 
-**1記事につき画像は0〜2枚まで**指定できます。画像2枚なら横並び、1枚なら全面、0枚なら日付カードに切り替わります。元画像の縦横比を維持したまま枠に合わせてトリミングします。対応形式はJPEG・PNG・WebP、サイズ上限は**1枚8MB**です。
+以下の配列だけを編集します。
 
 ```json
-"images": [],
-"date_label": "10 / 29"
+"images": []
 ```
+画像0枚。`date_label`による日付カードを表示します。
 
 ```json
-"images": ["assets/写真1.jpg"]
+"images": ["assets/Halloween.jpg"]
 ```
+画像1枚。写真枠に大きく表示されます。
 
 ```json
-"images": ["assets/写真1.jpg", "assets/写真2.jpg"]
+"images": ["assets/Halloween.jpg", "assets/Halloween2.jpg"]
 ```
+画像2枚。写真枠内で左右に並びます。
 
-> ※上の例はJSON内の一部を抜き出したものです。実際の`edition.json`には`//`から始まるコメントを入力しないでください（JSONではコメントを使えません）。
->
-> **互換性**: 旧形式`"image": "assets/写真1.jpg"`も1枚指定として引き続き使えます。`images`と`image`の両方に画像を指定するとエラーになります。
->
-> **上限**: 3枚以上を指定すると安全のため生成を中止します。
+指定パスは**その号の`edition.json`から見た相対パス**です。対応する画像形式はJPG / PNG / WebP（1枚8MB以下）。画像ファイル名も英数字・アンダースコアを推奨します。旧方式の `"image": "..."` も1枚指定なら使用可能ですが、**同じ記事で`image`と`images`の両方に画像を指定しないでください。**
 
-画像パスは、**その号の`edition.json`があるフォルダを基準にして解決されます**。次号の`issues/Vol06/edition.json`に`"assets/写真.jpg"`と書くなら、`issues/Vol06/assets/写真.jpg`に画像を置いてください。
+`image_caption`は設定データとして保持できますが、現状は紙面への表示に対応していません。
 
-### 5-4. お知らせ欄を変更する
+## 7. Microsoft Formsの回答について
 
-`notices`に**最大3件**まで登録できます。
+Formsの質問は**部署／①活動報告／②寮生への連絡事項／③その他**です。部署・①・②は必須、③は任意。部署は16種類あり、「秀峰寮東」「秀峰寮西」は別々に集計します。三役は右側の専用欄です。
 
-```json
-"notices": [
-  "10/29　寮生会からのお知らせ",
-  "11/5　各種書類の提出期限",
-  "11/10　寮内イベント開催予定"
-]
-```
+各部署は何度でも回答可能で、**完了時刻が最新の1回分を採用**します。①②③は1セットとして上書きし、最新版の③が空欄なら旧回答の③は残しません。未提出の部署は未提出として扱います。
 
-上から順に掲載されます。お知らせが長すぎると、レイアウトチェックでエラーになる場合があります。短めの文を推奨します。
+**掲載目安は各部署につき①活動報告30字・②連絡事項30字・③その他30字（合計90字）**です。文字数には①②③の番号を含みません。①②は必須、③は任意です。typeB・typeCとも報告欄の高さを以前の**509px**に復元し、本文の標準文字サイズも従来の**10px**に維持しました。16部署すべてが①②③に30字ずつ入力したサンプルで両デザインのA4・1ページ生成を確認しています。
 
-### 5-5. 寮務主事・寮監のコメントを変更する
+ただし、**30字以内ならどんな文章でも必ず入るという保証はありません**。改行・英数字・記号の組み合わせで折り返しが変わり、必要に応じて文字サイズが縮小されます。紙面からはみ出す場合はPDFを出さずエラーにするため、発行前に実際のプレビューを確認してください。フォームには各設問の上限を30文字として設定することを推奨します。
 
-```json
-"teacher1": "寮務主事からのコメントを入力します。",
-"teacher2": "寮監からのコメントを入力します。"
-```
+実回答Excelには個人情報が含まれる場合があるため、**GitHubにアップロードしないでください**。
 
-- `teacher1`：寮務主事から
-- `teacher2`：寮監から
+## 8. 出力方法・デザイン選択
 
-「寮生会三役」欄は`teacher1`/`teacher2`ではなく、**Formsの「三役」の回答**を反映します。
-
-## 6. 発行号数・年月を変更する
-
-`edition.json`の3項目を編集してください。
-
-```json
-"volume": 5,
-"issue_year": 2026,
-"issue_month": 10
-```
-
-上記の場合、左下は両デザインとも次の表示になります。
-
-**`寮生会庶務/vol.5/2026/10`**
-
-例えばVol.6・2026年11月にするときは、次の値に変更します。
-
-```json
-"volume": 6,
-"issue_year": 2026,
-"issue_month": 11
-```
-
-左下は自動的に**`寮生会庶務/vol.6/2026/11`**となります。題字付近の発行情報も変更されます。
-
-**注意**：起動コマンドの`--volume`と、原稿ファイルの`volume`は**一致**させてください。不一致の場合は生成を停止します。
-
-## 7. 次号の新聞を作る
-
-毎号の原稿が上書きされないよう、専用フォルダを作ります。
-
-例：Vol.6・2026年11月号
-
-```powershell
-python new_issue.py --volume 6 --year 2026 --month 11
-```
-
-作成される主なファイル：
-
-```text
-issues/
-└─ Vol06/
-   ├─ edition.json
-   ├─ assets/                       # 新号作成時に自動生成（画像を保存）
-   └─ ここにフォームの回答.xlsxを保存.txt
-```
-
-1. `issues/Vol06/edition.json`の記事・お知らせ・コメントを編集します。
-2. Microsoft Formsで**Vol.6用のフォームを複製**し、回答を集めます。
-3. Vol.6の回答Excelを`issues/Vol06/回答.xlsx`として保存します。
-4. 次のコマンドで生成します。
-
-```powershell
-python generate.py --input "issues/Vol06/回答.xlsx" --edition "issues/Vol06/edition.json" --volume 6 --design both
-```
-
-> **号の混入防止**：現行システムはフォームIDと号数を自動照合しません。**指定したExcelにその号の回答だけが入っていること**を、編集担当者が確認してください。既存の`edition.json`がある場合は原稿を上書きせず、`assets`フォルダがなければ作成します。発行年・月が既存の設定と違う場合も自動変更はしません。
-
-## 8. デザインを選択する
-
-`--design`には次の値を指定できます。
-
-| オプション | 生成するデザイン |
+| コマンド末尾 | 動作 |
 | --- | --- |
-| `classic` | ①新聞風 |
-| `blue` | ④現行改良版 |
-| `both` | 両方（既定） |
+| `--design both` | typeBとtypeCを両方生成 |
+| `--design typeB` | typeBだけ生成 |
+| `--design typeC` | typeCだけ生成 |
+| `--watch` | Excel・edition.jsonのファイル更新を監視して再生成 |
+| `--publish` | 未提出部署・文字数目安超過・仮コメントなどを厳しくチェック |
+| `--demo` | `samples/demo_answer.xlsx` で生成テスト |
 
-**①新聞風のみ：**
+従来の`--design blue`・`--design classic`も互換性のため受け付けますが、**生成フォルダ名・ファイル名はtypeB / typeC**に統一されます。
 
-```powershell
-python generate.py --input "回答.xlsx" --volume 5 --design classic
-```
-
-**④現行改良版のみ：**
-
-```powershell
-python generate.py --input "回答.xlsx" --volume 5 --design blue
-```
-
-**両方：**
+OneDriveの同期Excelを使用する場合：
 
 ```powershell
-python generate.py --input "回答.xlsx" --volume 5 --design both
+python generate.py --input "issues/Vol06/answer.xlsx" --edition "issues/Vol06/edition.json" --volume 6 --design both --watch
 ```
 
-Figmaの確定デザイン：<https://www.figma.com/design/68AF9y0lZGvNcHU6UYuXZ8?node-id=31-2>
+`--watch`は、PCを起動している間だけ実行されます。停止するには`Ctrl + C`です。**Microsoft Formsにプログラムが直接ログインする仕組みではありません。**
 
-HTML/CSSはFigmaの構成・配色・固定枠を再現したもので、文字詰めなどには差が出る場合があります。**発行時は生成したPDFで校正**してください。
+Windowsでは、`start_windows.bat`をダブルクリックして号数を入力する方法も使えます。これは号別の`issues/VolXX/answer.xlsx`と`edition.json`を自動指定します。
 
-## 9. OneDriveの更新を監視する
+## 9. 出力ファイルとエラーへの対処
 
-Formsの回答ExcelがOneDriveを通じてPCに自動同期される場合は、次のコマンドで**更新のたびに再生成**できます。
+出力は通常、`output/Vol6/`の下にまとまります。
 
-```powershell
-python generate.py --input "C:\Users\ユーザー名\OneDrive\寮生会\回答.xlsx" --volume 5 --watch
-```
-
-`watch_windows.bat`でも起動できます。停止はPowerShellで`Ctrl+C`です。
-
-- 監視するのは**回答Excelと指定した`edition.json`**の更新です。
-- **画像ファイルだけの変更は検知しません。** 画像を差し替えたら`edition.json`を保存し直すか生成コマンドを実行してください。
-- PCが起動しており、PythonプログラムとOneDrive同期が動作中の場合のみ有効です。
-- 単にダウンロードしたExcelは、新しい回答を自動取得しません。
-- Formsとの直接API接続や、PC停止中のクラウドPDF自動生成は**未実装**です。
-
-## 10. 正式発行前のチェック
-
-通常のプレビューでは、未提出部署があっても新聞を生成できます。正式発行用のチェックを厳しくしたい場合は、`--publish`を追加します。
-
-```powershell
-python generate.py --input "回答.xlsx" --volume 5 --publish
-```
-
-発行チェックでは、**未提出部署**、**文字数目安の超過**、**教員コメントの仮原稿**などが残っていると生成を停止します。本文の実際の見切れもブラウザで判定し、枠からはみ出す場合はPDFを出しません。
-
-目視で確認する項目は以下のとおりです。
-
-- 記事・各部署の内容に事実誤認や誤字がないか
-- 16部署の回答が揃い、掲載位置が正しいか
-- 学校行事や提出期限などの日付が正しいか
-- 仮原稿・サンプル写真が残っていないか
-- 画像の掲載許可、氏名や個人情報の取り扱いに問題がないか
-- A4・1ページのPDFで文字が読め、写真が適切に表示されるか
-
-`--publish`は**内容の正確さや掲載許可を保証しません**。発行前の最終承認は庶務担当者が行ってください。
-
-## 11. エラー・注意事項
-
-| 症状 | 確認すること |
+| ファイル | 用途 |
 | --- | --- |
-| `python`が見つからない | PythonのインストールとPATHを確認 |
-| Playwright/Chromium起動エラー | `python -m playwright install chromium`を実行 |
-| `回答.xlsx`が見つからない | ファイル名・保存場所・指定パスを確認 |
-| `edition.json`と号数が一致しない | `--volume`と`"volume"`を同じ値にする |
-| 日本語が`????`になっている | Formsから`.xlsx`を取得し直す |
-| 「秀峰寮」を認識できない | 部署選択肢を「秀峰寮東」「秀峰寮西」に修正 |
-| 記事画像が見つからない | `edition.json`からの相対パス、拡張子、8MB制限を確認 |
-| PDFが生成されない | `output/VolX/エラー.txt`、`提出状況.json`、プレビューPNGを確認 |
-| 未提出がある | `output/VolX/提出状況.html`で確認 |
+| `typeB/DormNewsVol6_typeB.pdf` | typeBの完成PDF |
+| `typeC/DormNewsVol6_typeC.pdf` | typeCの完成PDF |
+| `typeB/DormNewsVol6_typeB.png` | typeBのプレビューPNG |
+| `typeC/DormNewsVol6_typeC.png` | typeCのプレビューPNG |
+| `status.html` | 16部署の提出状況（ブラウザで確認） |
+| `status.json` | 処理状況や警告の詳細 |
+| `merged_data.json` | 最新回答をまとめたデータ。寮内情報を含むので取扱注意 |
+| `error.txt` | 生成失敗時のエラーメッセージ |
 
-紙面からの見切れが検出された場合、誤配布を防ぐためPDFの生成を止めます。HTML・PNG・診断結果を使って本文を短くするなどの調整をしてください。**文字を勝手に削除して掲載する仕様ではありません。**
+**よくある問題：**
 
-また、`output/VolX/反映データ.json`には採用済みの報告内容が記録されます。回答者のメールアドレス等は含めない設計ですが、未公開の記事・寮内連絡事項を含むため、公開範囲に注意してください。
+- `answer.xlsx`が見つからない：`issues/VolXX/`内に存在するか確認してください。
+- `edition.json`の号数と`--volume`が異なる：両方を同じ数字にしてください。
+- Excelの日時が読めない：最新の`report_engine.py`を使用してください。
+- PDFが生成されない：`error.txt`や`status.json`を読み、はみ出した記事・部署の文章を短くしてください。
+- 写真が見つからない：画像を`issues/VolXX/assets/`に置き、`images`のスペルを確認してください。
+- ZIP展開後の旧日本語ファイルが残る：次項の移行スクリプトを実行してください。
 
-## 12. 将来の拡張案
+改修を検証する場合：
 
-現状、上部の記事・お知らせ・教員コメントは**`edition.json`を直接編集**します。将来的にはブラウザの管理画面から以下を行えるようにする方針です（**現時点では未実装**）。
+```powershell
+python -m unittest test_system.py -v
+```
 
-- 発行号数・年月の入力
-- 記事①・②の見出し、本文、画像の登録
-- タイトル下の導入コメントの編集
-- お知らせ（最大3件）の編集
-- Forms回答の提出状況の確認
-- ①新聞風／④現行改良版の選択
-- PDFプレビューと発行前確認
+## 10. 既存プロジェクトから移行する場合
 
-管理画面を追加しても、現在の**Forms回答→Excel→Python→HTML/CSS→Playwright→PDF**の仕組みは流用できます。
+**最初に、`issues`フォルダを含むプロジェクト全体をバックアップしてください。** 旧ファイルの名前を変えてから今回のプログラム一式を上書きする運用が安全です。
 
----
+対応スクリプト`migrate_filenames.py`を追加しました。これは既存の`issues/VolXX/回答.xlsx`を`answer.xlsx`へ、古い生成ファイル名を英語に変更するためのものです。
 
-**基本運用のまとめ**：**各部署がFormsで回答 → 庶務が`edition.json`で記事等を編集 → `generate.py`で新聞を生成 → PDFを校正して発行**。
+```powershell
+python migrate_filenames.py
+```
+
+すでに同じ名前のファイルがある場合は**上書きせずに警告**します。移行後は新しい`generate.py`で新聞を再生成することをおすすめします。旧ファイル名がGitに登録されている場合は、`git add -A`で削除と追加を同時に記録できます。
+
+## 11. GitHubへの反映
+
+`NITNC_DormNews`のルートで次を実行します。
+
+```powershell
+git status
+git add -A
+git diff --cached --name-only
+git commit -m "Use English-only filenames for typeB and typeC outputs"
+git push origin main
+```
+
+`.gitignore`では、実回答Excel・記事写真・生成物を原則除外し、架空の`demo_answer.xlsx`と`demo_answer.csv`だけをテスト用に追跡する設定です。実行前に`git diff --cached --name-only`で確認してください。
+
+**注意：** このREADMEは現行仕様に対応したガイドです。発行前に、誤字脱字・掲載画像の許可・教員コメント・Forms回答の内容を必ず確認してください。
