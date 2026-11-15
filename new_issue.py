@@ -45,10 +45,22 @@ def main():
         print('[既存] 原稿は上書きしません:', edition_path)
         print('[確認] 画像フォルダ:', assets_dir)
         existing = json.loads(edition_path.read_text(encoding='utf-8'))
+        # 既存の原稿は保持したまま、新版で追加した横長記事3だけを補完する。
+        if 'article3' not in existing:
+            existing['article3'] = {
+                'category': 'CAMPUS NEWS / 03',
+                'title': '記事3のタイトルを入力してください',
+                'body': '記事3の本文を入力してください',
+                'image_caption': '',
+                'date_label': '写真を設定',
+                'images': [],
+            }
+            edition_path.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print('[補完] 記事3（article3）を追加しました:', edition_path)
         if existing.get('issue_year') != year or existing.get('issue_month') != month:
             print('[注意] 指定した発行年・月と既存edition.jsonが異なります。既存の設定は変更していません。')
         print('生成コマンド:')
-        print(f'python generate.py --input "issues/Vol{a.volume:02}/回答.xlsx" --edition "issues/Vol{a.volume:02}/edition.json" --volume {a.volume} --design both')
+        print(f'python generate.py --input "issues/Vol{a.volume:02}/answer.xlsx" --edition "issues/Vol{a.volume:02}/edition.json" --volume {a.volume} --design both')
         return
     edition = json.loads((ROOT / 'edition.json').read_text(encoding='utf-8'))
     edition['volume'] = a.volume
@@ -56,24 +68,31 @@ def main():
     edition['issue_month'] = month
     edition.pop('issue_date', None)
     edition['intro'] = '寮生会新聞の導入文を入力してください。'
-    edition['notices'] = ['お知らせ①（入力してください）', 'お知らせ②（入力してください）', 'お知らせ③（入力してください）']
-    for i in (1, 2):
-        edition[f'article{i}']['title'] = f'記事{i}のタイトルを入力してください'
-        edition[f'article{i}']['body'] = f'記事{i}の本文を入力してください'
-        edition[f'article{i}'].pop('image', None)  # 新方式のimages配列に統一
-        edition[f'article{i}']['images'] = []
-        edition[f'article{i}']['date_label'] = '写真を設定'
+    edition.pop('notices', None)  # お知らせ欄廃止。旧号の原稿はそのまま読み込める
+    for i in (1, 2, 3):
+        # 旧版のルートedition.jsonにarticle3がなくても新号を作れる。
+        article = edition.setdefault(f'article{i}', {
+            'category': f'CAMPUS NEWS / {i:02}',
+            'title': '', 'body': '', 'images': [], 'date_label': ''
+        })
+        if not isinstance(article, dict):
+            raise SystemExit(f'ルートedition.jsonのarticle{i}を確認してください。')
+        article['title'] = f'記事{i}のタイトルを入力してください'
+        article['body'] = f'記事{i}の本文を入力してください'
+        article.pop('image', None)  # 新方式のimages配列に統一
+        article['images'] = []
+        article['date_label'] = '写真を設定'
     edition['teacher1'] = '（寮務主事のコメントを入力）'
     edition['teacher2'] = '（寮監のコメントを入力）'
     edition_path.write_text(json.dumps(edition, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    (dest / 'ここにフォームの回答.xlsxを保存.txt').write_text(
+    (dest / 'PUT_answer_xlsx_HERE.txt').write_text(
         'Formsの新しい号の回答Excelを同じフォルダに置きます。前号の回答は使いません。\n', encoding='utf-8')
     print('[作成]', edition_path)
     print('[作成]', assets_dir)
-    print('左下表示：寮生会庶務/vol.' + str(a.volume) + '/' + str(year) + '/' + str(month))
+    print('発行情報は題字付近に表示されます。')
     print('Formsの複製と次号回答Excelの設定は、発行担当者が行ってください。')
     print('生成コマンド:')
-    print(f'python generate.py --input "issues/Vol{a.volume:02}/回答.xlsx" --edition "issues/Vol{a.volume:02}/edition.json" --volume {a.volume} --design both')
+    print(f'python generate.py --input "issues/Vol{a.volume:02}/answer.xlsx" --edition "issues/Vol{a.volume:02}/edition.json" --volume {a.volume} --design both')
 
 
 if __name__ == '__main__':
