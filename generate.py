@@ -20,7 +20,11 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from report_engine import InputProblem, PAPER_ORDER, FORM_DEPARTMENTS, load_and_merge
 
 ROOT = Path(__file__).resolve().parent
-TEMPLATES = {"classic": "①新聞風", "blue": "④現行改良版"}
+# typeB = colorful blue design, typeC = classic newspaper design.
+# Legacy --design classic/blue values remain accepted, but output names are canonical.
+TEMPLATES = {"typeB": "typeB", "typeC": "typeC"}
+DESIGN_ALIASES = {"typeB": "typeB", "typeC": "typeC", "blue": "typeB", "classic": "typeC"}
+HTML_DESIGNS = {"typeB": "blue", "typeC": "classic"}
 
 
 def validate_edition(edition_file: Path, volume: int) -> tuple[dict, list[dict]]:
@@ -32,7 +36,7 @@ def validate_edition(edition_file: Path, volume: int) -> tuple[dict, list[dict]]
         raise InputProblem(f"edition.jsonを読み取れません: {e}") from e
     if edition.get("volume") != volume:
         raise InputProblem(f"号数の不一致：起動時はVol.{volume}ですが、edition.jsonはVol.{edition.get('volume')}です。")
-    # 発行年月は年月を独立管理し、題字の日付と左下表記の不一致を防止する。
+    # 発行年月は年月を独立管理し、題字の日付の不一致を防止する。
     # 旧版の issue_date のみを含む設定も読み込み可能にする。
     has_ym = "issue_year" in edition and "issue_month" in edition
     if has_ym:
@@ -49,13 +53,21 @@ def validate_edition(edition_file: Path, volume: int) -> tuple[dict, list[dict]]
     edition["issue_year"] = year
     edition["issue_month"] = month
     edition["issue_date"] = f"{year}年{month}月"
-    for k in ("intro", "notices", "teacher1", "teacher2", "article1", "article2"):
+    for k in ("intro", "teacher1", "teacher2", "article1", "article2"):
         if k not in edition:
             raise InputProblem(f"edition.jsonの必須キー {k} がありません")
-    if not isinstance(edition["notices"], list) or len(edition["notices"]) > 3:
-        raise InputProblem("お知らせは最大3件です。edition.jsonのnoticesを確認してください。")
+    # 旧号にnoticesが残っていても読み込み可能。紙面には表示しない。
+    # article3 は横長記事欄。未設定でも既定値で補完して後方互換を保つ。
+    if "article3" not in edition:
+        edition["article3"] = {
+            "category": "CAMPUS NEWS / 03",
+            "title": "記事3のタイトルを入力してください",
+            "body": "記事3の本文を入力してください",
+            "date_label": "写真を設定",
+            "images": []
+        }
     articles = []
-    for i in (1, 2):
+    for i in (1, 2, 3):
         if not isinstance(edition[f"article{i}"], dict):
             raise InputProblem(f"article{i}はJSONオブジェクト（{{...}}）で設定してください。")
         item = edition[f"article{i}"].copy()
@@ -133,6 +145,9 @@ def browser_render(html_file: Path, pdf_file: Path, png_file: Path, final: bool)
 def compile_once(input_file: Path, edition_file: Path, out_root: Path, volume: int,
                  designs: list[str], publish: bool, max_chars: int) -> dict:
     out_root.mkdir(parents=True, exist_ok=True)
+    designs = [DESIGN_ALIASES[d] for d in designs]
+    # Keep the result ordered and de-duplicated when callers pass legacy aliases.
+    designs = list(dict.fromkeys(designs))
     result = load_and_merge(input_file, volume, max_chars)
     edition, articles = validate_edition(edition_file, volume)
     audit = dict(result.audit)
@@ -155,15 +170,14 @@ def compile_once(input_file: Path, edition_file: Path, out_root: Path, volume: i
 
     reports = [result.latest[name] for name in PAPER_ORDER]
     leader = result.latest["三役"]
-    write_json(out_root / "提出状況.json", audit)
-    write_json(out_root / "反映データ.json", {
+    write_json(out_root / "status.json", audit)
+    write_json(out_root / "merged_data.json", {
         "volume": volume,
         "issue_year": edition["issue_year"],
         "issue_month": edition["issue_month"],
         "paper_order": PAPER_ORDER,
         "reports": reports,
         "leader": leader,
-        "notice": edition["notices"],
         "message": "個人メールアドレスや回答者名はこのファイルに含まれません",
     })
     # 回答の提出状況だけをブラウザで確認できる一覧（個人情報は含めない）
@@ -178,7 +192,7 @@ def compile_once(input_file: Path, edition_file: Path, out_root: Path, volume: i
     status_html = """<!doctype html><html lang=ja><meta charset=utf-8><title>提出状況</title>
     <style>body{font-family:system-ui,sans-serif;max-width:820px;margin:35px auto;color:#203445}h1{border-bottom:3px solid #246c9b;padding-bottom:8px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #dae3e8;padding:9px 12px;text-align:left}th{background:#edf5f9}td.submitted{color:#13754a;font-weight:bold}td.missing{color:#b34b3a;font-weight:bold}small{color:#667682}</style>
     <h1>寮生会新聞 Vol."""+str(volume)+"""｜提出状況</h1><p>提出 """+str(audit["submitted"])+"""/"""+str(len(FORM_DEPARTMENTS))+"""部署・総回答 """+str(audit["total_responses"])+""" 件（最新のものを採用）</p><table><thead><tr><th>部署</th><th>状態</th><th>最新の完了時刻</th><th>文字数</th></tr></thead><tbody>"""+"".join(status_rows)+"""</tbody></table><p><small>内容の承認や掲載可否は編集担当者が確認してください。</small></p></html>"""
-    (out_root / "提出状況.html").write_text(status_html, encoding="utf-8")
+    (out_root / "status.html").write_text(status_html, encoding="utf-8")
     env = Environment(loader=FileSystemLoader(ROOT / "templates"), autoescape=select_autoescape(["html"]))
     template = env.get_template("newspaper.html")
     overflows = {}
@@ -186,12 +200,12 @@ def compile_once(input_file: Path, edition_file: Path, out_root: Path, volume: i
     for design in designs:
         dest = out_root / design
         dest.mkdir(parents=True, exist_ok=True)
-        base_name = f"寮生会新聞Vol{volume}_{TEMPLATES[design]}"
+        base_name = f"DormNewsVol{volume}_{design}"
         html_path = dest / (base_name + ".html")
         pdf_path = dest / (base_name + ".pdf")
         png_path = dest / (base_name + ".png")
-        html = template.render(design=design, design_label=TEMPLATES[design], volume=volume,
-                               issue=edition, articles=articles, reports=reports, leader=leader)
+        html = template.render(design=HTML_DESIGNS[design], design_label=TEMPLATES[design], volume=volume,
+                               issue=edition, articles=articles[:2], feature_article=articles[2], reports=reports, leader=leader)
         html_path.write_text(html, encoding="utf-8")
         overflows[design] = browser_render(html_path, pdf_path, png_path, publish)
         output_paths[design] = {"html": str(html_path), "pdf": str(pdf_path) if pdf_path.exists() else None,
@@ -200,13 +214,13 @@ def compile_once(input_file: Path, edition_file: Path, out_root: Path, volume: i
     if any(overflows.values()):
         audit["status"] = "OVERFLOW: PDFを生成せずHTML/PNGで確認"
         audit["layout_overflows"] = overflows
-        write_json(out_root / "提出状況.json", audit)
+        write_json(out_root / "status.json", audit)
         raise InputProblem("本文が紙面からはみ出しています: " + json.dumps(overflows, ensure_ascii=False))
     audit["status"] = "READY_FOR_REVIEW: 発行前の内容確認が必要" if publish else "DRAFT: 校正前"
     audit["generated_files"] = output_paths
-    write_json(out_root / "提出状況.json", audit)
-    if (out_root / "エラー.txt").exists():
-        (out_root / "エラー.txt").unlink()
+    write_json(out_root / "status.json", audit)
+    if (out_root / "error.txt").exists():
+        (out_root / "error.txt").unlink()
     summary = f"Vol.{volume}：有効回答{audit['total_responses']}件・提出{audit['submitted']}/{len(FORM_DEPARTMENTS)}部署・未提出{len(audit['missing'])}部署"
     print("[正常終了]", summary)
     print("[重複]", [(d["department"], d["count"]) for d in audit["duplicates"]])
@@ -220,12 +234,13 @@ def main():
     p.add_argument("--input", type=Path, help="Microsoft Forms のExcel (.xlsx) またはUTF-8のCSV")
     p.add_argument("--volume", type=int, default=5, help="対象の号数（既定5）")
     p.add_argument("--edition", type=Path, default=ROOT / "edition.json", help="記事・お知らせ編集用JSON")
-    p.add_argument("--design", choices=["classic", "blue", "both"], default="both")
+    p.add_argument("--design", choices=["typeB", "typeC", "both", "classic", "blue"], default="both",
+                   help="typeB: colorful, typeC: newspaper, both: both (classic/blue legacy aliases)")
     p.add_argument("--watch", action="store_true", help="OneDriveで同期されたExcelの更新を監視する")
     p.add_argument("--interval", type=float, default=5, help="監視する秒間隔")
     p.add_argument("--publish", action="store_true", help="未提出や原稿未確認を厳密チェックする")
     p.add_argument("--demo", action="store_true", help="架空の回答データで動作確認")
-    p.add_argument("--max-chars", type=int, default=95, help="部署別の文字数の目安。実際の収まりはブラウザ判定")
+    p.add_argument("--max-chars", type=int, default=90, help="部署別の①②③合計文字数の目安（各30字、合計90字）。最終的な収まりはブラウザ判定")
     p.add_argument("--out", type=Path, help="保存先。省略時output/VolX")
     a = p.parse_args()
     if not a.input and not a.demo:
@@ -234,10 +249,10 @@ def main():
         p.error("デモ原稿を発行モードにはできません")
     if a.demo and a.watch:
         p.error("--demo と --watch は併用できません")
-    file = (ROOT / "samples" / "動作確認用_架空回答.xlsx") if a.demo else a.input.expanduser().resolve()
+    file = (ROOT / "samples" / "demo_answer.xlsx") if a.demo else a.input.expanduser().resolve()
     edition = a.edition.expanduser().resolve()
     out = a.out.expanduser().resolve() if a.out else ROOT / "output" / f"Vol{a.volume}"
-    designs = ["classic", "blue"] if a.design == "both" else [a.design]
+    designs = ["typeB", "typeC"] if a.design == "both" else [DESIGN_ALIASES[a.design]]
 
     def execute():
         try:
@@ -245,12 +260,12 @@ def main():
         except (InputProblem, OSError, json.JSONDecodeError) as ex:
             out.mkdir(parents=True, exist_ok=True)
             message = str(ex)
-            (out / "エラー.txt").write_text(message, encoding="utf-8")
+            (out / "error.txt").write_text(message, encoding="utf-8")
             # エラー後に古い成功PDFを最新結果と誤認しないよう削除
             for design in designs:
                 d = out / design
                 if d.exists():
-                    for stale_pdf in d.glob("寮生会新聞Vol*_*.pdf"):
+                    for stale_pdf in d.glob("DormNewsVol*_*.pdf"):
                         stale_pdf.unlink()
             print("[生成中止]", message, file=sys.stderr)
             return None
